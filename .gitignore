@@ -45,3 +45,14 @@ htmlcov/
 
 # Claude Code 订阅令牌（docker compose 自动读取），禁止提交
 .env
+
+# 视频批次中间产物（可再生，不入库）
+videos/*/work/segments/
+videos/*/work/frames/
+videos/*/work/qc/
+videos/*/work/overlays/
+videos/*/work/*.mp3
+
+# B站批次可再生中间产物（术语卡PNG由 build.py 烘焙、日志）
+videos/*/work/cards/
+videos/*/work/*.txt
