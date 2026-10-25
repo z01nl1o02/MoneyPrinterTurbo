@@ -91,7 +91,7 @@ def counter(text, big=False) -> Image.Image:
 
 
 def vs_bar(left, right, l_ratio=40, r_ratio=301) -> Image.Image:
-    """我方 vs 敌方 对比条（本集最大笑点，数字按比例画条）。"""
+    """我方 vs 敌方 对比条（长度按数值比例绘制，比例由参数给定）。"""
     img = Image.new("RGBA", (860, 210), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([0, 0, 859, 209], 24, fill=(0, 0, 0, 175))
