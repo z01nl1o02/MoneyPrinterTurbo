@@ -1,11 +1,13 @@
 ---
 name: video-production
-description: 本仓库（douyin-videokit）的视频制作全流程：输入分镜脚本 + 本地素材，产出抖音竖屏/B站横屏成片与发布包。涵盖新建批次、语速校核、Edge TTS 配音、素材预处理、词级 cue 锚定分镜、合成母版、QC 与发布策略。Use when the user asks to make/produce/edit a video, create a new video batch, run or debug the video pipeline (TTS/字幕/合成/切片), or package a video for publishing.
+description: 本仓库（douyin-videokit）的视频制作全流程：输入分镜脚本 + 本地素材，产出抖音竖屏/B站横屏成片与发布包。涵盖新建批次、语速校核、Edge TTS 配音、素材预处理、词级 cue 锚定分镜、合成母版、QC 与发布策略；亦支持给已有视频 + SRT 字幕补配音（dub）。Use when the user asks to make/produce/edit a video, create a new video batch, run or debug the video pipeline (TTS/字幕/合成/切片), dub an existing video from its subtitle file, or package a video for publishing.
 ---
 
 # 视频制作工作流（douyin-videokit）
 
 **工具定位**：分镜脚本（人工）+ 本地素材 clips → Edge TTS 配音 → 词级大字幕 → MoviePy 合成 → loudnorm 母版 → 引流切片 + 封面 + 发布包。零 API Key、零外部下载。
+
+**模式路由（先看输入物）**：给「现成视频 + SRT 字幕」→ 只补人声，走 §12 dub（不重剪，视频流直拷）；给「文案/分镜 + clips 素材」→ 从零成片，走 §2 新建批次。两者也可串联：外部成片先 dub，再当素材进批次。
 
 深度细节见仓库根文档：`README.md`（目录结构与快速开始）、`MoneyPrinterTurbo_视频制作实战经验.md`（全部踩坑与方法论，本文是其浓缩）。做新视频前若时间允许，通读经验文档。
 
@@ -23,6 +25,7 @@ FFmpeg 用系统的。三个阶段：`seg`（ffmpeg 素材预处理）→ `compo
 | `pipeline/prepare.py` | ffmpeg 预处理：cover 裁剪 / letterbox 模糊背景 / 慢放 / 定格帧 |
 | `pipeline/textfx.py` | PIL 花字：印章/信息条/计数器/对比条/词级大字幕卡 |
 | `pipeline/compose.py` | MoviePy 合成：场景组装/BGM/母版 loudnorm/切片 |
+| `pipeline/dub.py` | 独立子命令：现成视频 + SRT 补配音（见 §12，不依赖批次） |
 
 ## 2. 新建批次
 
@@ -106,7 +109,22 @@ FFmpeg 用系统的。三个阶段：`seg`（ffmpeg 素材预处理）→ `compo
 - `S = {key: scene}` 字典与 `scenes` 列表命名一眼可分，防 `TypeError: string indices`
 - 调参集中在批次 build.py 顶部；`plan`（预览）→ `seg` → `compose`（改样式只重跑）→ `master` 分阶段执行
 
-## 12. 命令速查
+## 12. 补配音 dub（现成视频 + SRT → 配音成片）
+
+不分镜、不走批次，直接给已有视频配人声（`pipeline/dub.py`，独立子命令，不影响分镜流水线）：
+
+```bash
+.venv/Scripts/python.exe -m pipeline.dub <video.mp4> <sub.srt> [options]
+# 常用：--bg-volume 0.2 原声降权 | --duck 侧链闪避 | --mute 丢弃原声
+#       --voice/--rate/--max-rate 控制语声；--force 重做 TTS；--out 自定义输出
+```
+
+- 流程：解析 SRT → 逐条 Edge TTS（按 文本hash+语速 缓存在 `<视频目录>/work/dub/`，重跑不耗网络）→ 铺到全片静音轨 → 与原声 amix（normalize=0）+ loudnorm → **视频流直拷**只重编音频，秒级
+- 对齐策略：自然语速放得下就原速；放不下先溢入条间空隙（留 0.08s 呼吸），再提语速重合成（上限 `--max-rate` 60%），仍不行 atempo 精确压入；Edge TTS 自带前导静音会被自动裁掉（≤0.25s）让人声贴字幕起点
+- 字幕时窗紧的句子（如倒数/口号）会被提速到 +50~60%，嫌快可用 `--max-rate` 收紧上限（代价是溢出告警）；每条结果写入 `work/dub/report.json`（UTF-8），控制台只打 ASCII 统计
+- QC：`ffprobe` 核时长；对 `work/dub/dub.wav` 跑 `silencedetect=noise=-38dB` 核对静默段与字幕间隙一致即对齐正确
+
+## 13. 命令速查
 
 ```bash
 uv sync                                                      # 首次建环境
@@ -115,4 +133,5 @@ uv sync                                                      # 首次建环境
 .venv/Scripts/python.exe videos/<批次>/build.py compose      # 只重合成（改样式后）
 .venv/Scripts/python.exe videos/<批次>/build.py --force-tts all  # 重做配音
 .venv/Scripts/python.exe -u videos/20261020A-bili/make_tts.py   # B站长片：先预生成配音
+.venv/Scripts/python.exe -m pipeline.dub <video> <srt>         # 现成视频 + 字幕补配音
 ```
